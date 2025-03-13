@@ -579,6 +579,7 @@ async def send_message(request: Request, thread_id: str):
         thread_id=thread_id,
         assistant_id="agent",
         input={"messages": [{"type": "human", "content": msg}]},
+        stream_mode="messages-tuple",
     )
     run_id = run["run_id"]
     assistant_placeholder = AssistantMessagePlaceholder(thread_id, run_id)
@@ -590,24 +591,14 @@ async def message_generator(thread_id: str, run_id: str) -> AsyncGenerator[str, 
 
     Yields message chunks as they are received from the LangGraph agent.
     """
-    async for chunk in langgraph_client.runs.join_stream(thread_id, run_id):
+    async for chunk in langgraph_client.runs.join_stream(
+        thread_id, run_id, stream_mode="messages-tuple"
+    ):
         if chunk.event == "messages":
             for chunk_msg in chunk.data:
                 content = chunk_msg.get("content", "")
-                if content and content.strip():
+                if content:
                     yield f"event: message\ndata: {content}\n\n"
-        elif chunk.event == "values":
-            last_msg = chunk.data["messages"][-1]
-            if last_msg.get("type") != "ai":
-                continue
-            content = last_msg.get("content", "")
-            if isinstance(content, list):
-                content = "".join(
-                    c["text"] for c in content if isinstance(c, dict) and c.get("text")
-                )
-            content = content.strip()
-            if content:
-                yield f"event: message\ndata: {content}\n\n"
 
     yield "event: close\ndata:\n\n"
 
